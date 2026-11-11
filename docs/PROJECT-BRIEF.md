@@ -6,7 +6,7 @@ Last updated: 2026-11-10
 
 **Based on:** the Devtiro Restaurant Review App build guide (March 2025)
 
-**Stack:** Spring Boot 4.1.2, Java 25, Elasticsearch 8.12, Keycloak 23; frontend stack to be decided
+**Stack:** Spring Boot 4.1.2, Java 25, Elasticsearch 9.4.8, Keycloak 23; frontend stack to be decided
 
 This project builds a restaurant review platform by following a tutorial, extends it with features of my own, and deploys it online as a live demo for my CV. This brief is the shared context: why the project exists, what the system does, how the parts fit together and how the work is planned.
 
