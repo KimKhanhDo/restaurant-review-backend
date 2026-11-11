@@ -1,0 +1,49 @@
+# CI = Continuous Integration.
+# This workflow builds the project and runs all tests on GitHub's servers.
+# It runs automatically, so you know quickly if a change breaks something.
+
+# The name shown in the "Actions" tab on GitHub.
+name: CI
+
+# WHEN should this workflow run?
+on:
+  # Run when you push new commits to the main branch.
+  push:
+    branches: [main]
+  # Run when you open or update a Pull Request that targets main.
+  # This checks your feature branch BEFORE you merge it.
+  pull_request:
+    branches: [main]
+
+# WHAT should it do? A workflow has one or more "jobs".
+jobs:
+  build:
+    # The job runs on a fresh Linux machine that GitHub provides for free.
+    # Nothing from your laptop is on it, only your code from the repository.
+    runs-on: ubuntu-latest
+
+    # The job is a list of steps. They run one after another, from top to bottom.
+    # If one step fails, the job stops and shows a red cross on GitHub.
+    steps:
+      # Step 1: Download your code onto the GitHub machine.
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      # Step 2: Install Java 25, the same version this project uses.
+      # "temurin" is a free Java distribution from the Eclipse Foundation.
+      # "cache: maven" saves downloaded libraries between runs,
+      # so later runs are faster.
+      - name: Set up Java 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      # Step 3: Build the project and run all tests.
+      # "./mvnw" is the Maven Wrapper in this repository, so we do not need
+      # to install Maven separately.
+      # "verify" compiles the code, runs the tests and checks the build.
+      # "-B" means batch mode: shorter, cleaner logs for CI.
+      - name: Build and run tests
+        run: ./mvnw -B verify
