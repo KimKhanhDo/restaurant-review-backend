@@ -21,7 +21,7 @@ public class PhotoController {
     private final PhotoService photoService;
     private final PhotoMapper photoMapper;
 
-    @PostMapping
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public PhotoDto uploadPhoto(@RequestParam("file") MultipartFile file) {
         Photo savedPhoto = photoService.uploadPhoto(file);
         return photoMapper.toDto(savedPhoto);
