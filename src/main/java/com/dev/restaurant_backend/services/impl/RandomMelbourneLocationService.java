@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.Random;
 
+// Fake implementation for development: ignores the address and returns a random point in Melbourne
 @Service
 public class RandomMelbourneLocationService implements GeoLocationService {
 
