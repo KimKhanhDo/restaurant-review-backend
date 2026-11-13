@@ -5,7 +5,7 @@ import com.dev.restaurant_backend.domain.entities.Photo;
 import org.mapstruct.Mapper;
 import org.mapstruct.ReportingPolicy;
 
-@Mapper(componentModel = "spring", unmappedTargetPolicy = ReportingPolicy.IGNORE)
+@Mapper(componentModel = "spring", unmappedTargetPolicy = ReportingPolicy.ERROR)
 public interface PhotoMapper {
 
     PhotoDto toDto(Photo photo);
