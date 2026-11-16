@@ -91,7 +91,7 @@ public class RestaurantServiceImpl implements RestaurantService {
 
         // Address may have changed, so recalculate the coordinates
         GeoPoint newGeoPoint = toGeoPoint(request.getAddress());
-        List<Photo> photos = toPhotos(request.getPhotoIds());
+        List<Photo> photos = mergePhotos(restaurant.getPhotos(), request.getPhotoIds());
 
         // Rating, reviews and createdBy are kept as they are
         restaurant.setName(request.getName());
@@ -114,10 +114,32 @@ public class RestaurantServiceImpl implements RestaurantService {
     // Turns uploaded photo IDs into Photo objects
     private List<Photo> toPhotos(List<String> photoIds) {
         return photoIds.stream()
-                .map(photoUrl -> Photo.builder()
-                        .url(photoUrl)
-                        .uploadDate(LocalDateTime.now())
-                        .build())
+                .map(this::newPhoto)
                 .toList();
+    }
+
+    // Keeps existing photos (and their upload dates); only new photo IDs get today's date
+    private List<Photo> mergePhotos(List<Photo> existingPhotos, List<String> photoIds) {
+        List<Photo> oldPhotos = existingPhotos == null ? List.of() : existingPhotos;
+
+        return photoIds.stream()
+                .map(photoUrl -> {
+                    // Look for an old photo with the same URL
+                    Optional<Photo> oldPhoto = oldPhotos.stream()
+                            .filter(photo -> photoUrl.equals(photo.getUrl()))
+                            .findFirst();
+
+                    // Reuse it if found, otherwise create a new one
+                    return oldPhoto.orElseGet(() -> newPhoto(photoUrl));
+                })
+                .toList();
+    }
+
+    // Creates a photo uploaded now
+    private Photo newPhoto(String photoUrl) {
+        return Photo.builder()
+                .url(photoUrl)
+                .uploadDate(LocalDateTime.now())
+                .build();
     }
 }
