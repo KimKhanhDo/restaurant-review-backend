@@ -29,18 +29,9 @@ public class RestaurantServiceImpl implements RestaurantService {
     // Builds a new restaurant from the request, resolves its coordinates and saves it
     @Override
     public Restaurant createRestaurant(RestaurantCreateUpdateRequest request) {
-        // Convert the address into coordinates that Elasticsearch can store
         Address address = request.getAddress();
-        GeoLocation geoLocation = geoLocationService.getGeoLocation(address);
-        GeoPoint geoPoint = new GeoPoint(geoLocation.getLatitude(), geoLocation.getLongitude());
-
-        // Turn uploaded photo IDs into Photo objects
-        List<String> photoIds = request.getPhotoIds();
-        List<Photo> photos = photoIds.stream()
-                .map(photoUrl -> Photo.builder()
-                        .url(photoUrl)
-                        .uploadDate(LocalDateTime.now())
-                        .build()).toList();
+        GeoPoint geoPoint = toGeoPoint(address);
+        List<Photo> photos = toPhotos(request.getPhotoIds());
 
         // New restaurants start with no reviews, so the rating is 0
         Restaurant restaurant = Restaurant.builder()
@@ -99,18 +90,8 @@ public class RestaurantServiceImpl implements RestaurantService {
                         new RestaurantNotFoundException("Restaurant with id " + id + " not found"));
 
         // Address may have changed, so recalculate the coordinates
-        GeoLocation newGeoLocation = geoLocationService.getGeoLocation(request.getAddress());
-        GeoPoint newGeoPoint = new GeoPoint(
-                newGeoLocation.getLatitude(), newGeoLocation.getLongitude()
-        );
-
-        // Turn uploaded photo IDs into Photo objects
-        List<String> photoIds = request.getPhotoIds();
-        List<Photo> photos = photoIds.stream()
-                .map(photoUrl -> Photo.builder()
-                        .url(photoUrl)
-                        .uploadDate(LocalDateTime.now())
-                        .build()).toList();
+        GeoPoint newGeoPoint = toGeoPoint(request.getAddress());
+        List<Photo> photos = toPhotos(request.getPhotoIds());
 
         // Rating, reviews and createdBy are kept as they are
         restaurant.setName(request.getName());
@@ -124,5 +105,19 @@ public class RestaurantServiceImpl implements RestaurantService {
         return restaurantRepository.save(restaurant);
     }
 
+    // Converts an address into coordinates that Elasticsearch can store
+    private GeoPoint toGeoPoint(Address address) {
+        GeoLocation geoLocation = geoLocationService.getGeoLocation(address);
+        return new GeoPoint(geoLocation.getLatitude(), geoLocation.getLongitude());
+    }
 
+    // Turns uploaded photo IDs into Photo objects
+    private List<Photo> toPhotos(List<String> photoIds) {
+        return photoIds.stream()
+                .map(photoUrl -> Photo.builder()
+                        .url(photoUrl)
+                        .uploadDate(LocalDateTime.now())
+                        .build())
+                .toList();
+    }
 }
