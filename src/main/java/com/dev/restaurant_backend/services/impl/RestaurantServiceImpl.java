@@ -105,6 +105,11 @@ public class RestaurantServiceImpl implements RestaurantService {
         return restaurantRepository.save(restaurant);
     }
 
+    @Override
+    public void deleteRestaurant(String id) {
+        restaurantRepository.deleteById(id);
+    }
+
     // Converts an address into coordinates that Elasticsearch can store
     private GeoPoint toGeoPoint(Address address) {
         GeoLocation geoLocation = geoLocationService.getGeoLocation(address);
