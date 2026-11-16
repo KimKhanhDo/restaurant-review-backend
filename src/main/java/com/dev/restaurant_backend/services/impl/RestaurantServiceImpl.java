@@ -9,6 +9,8 @@ import com.dev.restaurant_backend.repositories.RestaurantRepository;
 import com.dev.restaurant_backend.services.GeoLocationService;
 import com.dev.restaurant_backend.services.RestaurantService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.elasticsearch.core.geo.GeoPoint;
 import org.springframework.stereotype.Service;
 
@@ -51,5 +53,33 @@ public class RestaurantServiceImpl implements RestaurantService {
                 .build();
 
         return restaurantRepository.save(restaurant);
+    }
+
+    // Picks one search strategy based on which optional filters are given; the first match wins
+    @Override
+    public Page<Restaurant> searchRestaurants(
+            String query, Float minRating, Float latitude, Float longitude,
+            Float radius, Pageable pageable) {
+
+        // Only a minimum rating was given: filter by rating
+        if (minRating != null && (query == null || query.isEmpty())) {
+            return restaurantRepository.findByAverageRatingGreaterThanEqual(minRating, pageable);
+        }
+
+        // No rating chosen: use 0 so every rating matches
+        Float searchMinRating = minRating == null ? 0f : minRating;
+
+        // Text was given: fuzzy search by name or cuisine type
+        if (query != null && !query.trim().isEmpty()) {
+            return restaurantRepository.findByQueryAndMinRating(query, searchMinRating, pageable);
+        }
+
+        // Location and radius were given: find restaurants nearby
+        if (latitude != null && longitude != null && radius != null) {
+            return restaurantRepository.findByLocationNear(latitude, longitude, radius, pageable);
+        }
+
+        // No filters: return all restaurants
+        return restaurantRepository.findAll(pageable);
     }
 }

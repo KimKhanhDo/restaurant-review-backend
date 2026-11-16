@@ -33,6 +33,7 @@ public class Review {
     private LocalDateTime lastEdited;
 
     @Field(type = FieldType.Nested)
+    @Builder.Default
     private List<Photo> photos = new ArrayList<>();
 
     @Field(type = FieldType.Nested)
