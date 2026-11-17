@@ -55,9 +55,22 @@ public class ReviewController {
                     sort = "datePosted",
                     direction = Sort.Direction.DESC) Pageable pageable
     ) {
-        
+
         return reviewService.listReviews(restaurantId, pageable)
                 .map(reviewMapper::toReviewDto);
+    }
+
+    @GetMapping(path = "/{review_id}")
+    public ResponseEntity<ReviewDto> getReviewById(
+            @PathVariable("restaurant_id") String restaurantId,
+            @PathVariable("review_id") String reviewId
+    ) {
+
+        return reviewService.getReviewById(restaurantId, reviewId)
+                .map(reviewMapper::toReviewDto)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
+
     }
 
     private User jwtToUser(Jwt jwt) {
