@@ -4,6 +4,7 @@ import com.dev.restaurant_backend.domain.dtos.ErrorDto;
 import com.dev.restaurant_backend.exceptions.BaseException;
 import com.dev.restaurant_backend.exceptions.RestaurantNotFoundException;
 import com.dev.restaurant_backend.exceptions.ReviewNotAllowedException;
+import com.dev.restaurant_backend.exceptions.ReviewNotFoundException;
 import com.dev.restaurant_backend.exceptions.StorageException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -37,6 +38,18 @@ public class ErrorController {
         ErrorDto errorDto = ErrorDto.builder()
                 .status(HttpStatus.NOT_FOUND.value())
                 .message("The specified restaurant was not found")
+                .build();
+
+        return new ResponseEntity<>(errorDto, HttpStatus.NOT_FOUND);
+    }
+
+    @ExceptionHandler(ReviewNotFoundException.class)
+    public ResponseEntity<ErrorDto> handleReviewNotFoundException(ReviewNotFoundException ex) {
+        log.error("Caught ReviewNotFoundException", ex);
+
+        ErrorDto errorDto = ErrorDto.builder()
+                .status(HttpStatus.NOT_FOUND.value())
+                .message("The specified review was not found")
                 .build();
 
         return new ResponseEntity<>(errorDto, HttpStatus.NOT_FOUND);
