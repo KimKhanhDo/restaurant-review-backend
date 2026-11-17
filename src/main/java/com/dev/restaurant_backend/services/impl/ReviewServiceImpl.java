@@ -147,6 +147,19 @@ public class ReviewServiceImpl implements ReviewService {
         return existingReview;
     }
 
+    @Override
+    public void deleteReview(User author, String restaurantId, String reviewId) {
+        Restaurant restaurant = getRestaurantOrThrow(restaurantId);
+        Review existingReview = getAuthorReviewOrThrow(restaurant, reviewId, author);
+
+        // Removes the review from the restaurant's list in place
+        restaurant.getReviews().remove(existingReview);
+
+        updateRestaurantAverageRating(restaurant);
+
+        restaurantRepository.save(restaurant);
+    }
+
     // Recalculates the average from all reviews; 0 when there are none
     private void updateRestaurantAverageRating(Restaurant restaurant) {
         List<Review> reviews = restaurant.getReviews();
