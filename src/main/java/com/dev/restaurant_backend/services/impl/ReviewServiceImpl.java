@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -113,10 +114,53 @@ public class ReviewServiceImpl implements ReviewService {
     public Optional<Review> getReviewById(String restaurantId, String reviewId) {
         Restaurant restaurant = getRestaurantOrThrow(restaurantId);
 
-        return restaurant.getReviews()
-                .stream()
-                .filter(r -> reviewId.equals(r.getId()))
-                .findFirst();
+        return getReviewFromRestaurant(restaurant, reviewId);
+    }
+
+    @Override
+    public Review updateReview(
+            User author,
+            String restaurantId,
+            String reviewId,
+            ReviewCreateUpdateRequest review) {
+
+        Restaurant restaurant = getRestaurantOrThrow(restaurantId);
+        String authorId = author.getId();
+
+        Review existingReview = getReviewFromRestaurant(restaurant, reviewId)
+                .orElseThrow(() -> new ReviewNotAllowedException("Review does not exist"));
+
+        if (!authorId.equals(existingReview.getWrittenBy().getId())) {
+            throw new ReviewNotAllowedException("Cannot update another user's review");
+        }
+
+        if (LocalDateTime.now().isAfter(existingReview.getDatePosted().plusHours(48))) {
+            throw new ReviewNotAllowedException("Review can no longer be edited");
+        }
+
+        existingReview.setContent(review.getContent());
+        existingReview.setRating(review.getRating());
+        existingReview.setLastEdited(LocalDateTime.now());
+
+        existingReview.setPhotos(review.getPhotoIds().stream()
+                .map(photoId -> Photo.builder()
+                        .url(photoId)
+                        .uploadDate(LocalDateTime.now())
+                        .build()).toList());
+
+        // Collectors.toList() gives a mutable list, so the edited review can be added back
+        List<Review> updatedReviews = restaurant.getReviews().stream()
+                .filter(r -> !reviewId.equals(r.getId()))
+                .collect(Collectors.toList());
+        updatedReviews.add(existingReview);
+
+        restaurant.setReviews(updatedReviews);
+
+        updateRestaurantAverageRating(restaurant);
+
+        restaurantRepository.save(restaurant);
+
+        return existingReview;
     }
 
     // Recalculates the average from all reviews; 0 when there are none
@@ -129,6 +173,14 @@ public class ReviewServiceImpl implements ReviewService {
                 .orElse(0.0);
 
         restaurant.setAverageRating((float) averageRating);
+    }
+
+    // Reviews live inside the restaurant document, so look them up in its list
+    private Optional<Review> getReviewFromRestaurant(Restaurant restaurant, String reviewId) {
+        return restaurant.getReviews()
+                .stream()
+                .filter(r -> reviewId.equals(r.getId()))
+                .findFirst();
     }
 
     // Shared by all review operations that need an existing restaurant
