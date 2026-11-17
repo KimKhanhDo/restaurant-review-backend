@@ -7,6 +7,7 @@ import com.dev.restaurant_backend.domain.entities.Review;
 import com.dev.restaurant_backend.domain.entities.User;
 import com.dev.restaurant_backend.exceptions.RestaurantNotFoundException;
 import com.dev.restaurant_backend.exceptions.ReviewNotAllowedException;
+import com.dev.restaurant_backend.exceptions.ReviewNotFoundException;
 import com.dev.restaurant_backend.repositories.RestaurantRepository;
 import com.dev.restaurant_backend.services.ReviewService;
 import lombok.RequiredArgsConstructor;
@@ -63,10 +64,8 @@ public class ReviewServiceImpl implements ReviewService {
 
         Restaurant savedRestaurant = restaurantRepository.save(restaurant);
 
-        return savedRestaurant.getReviews().stream()
-                .filter(r -> reviewId.equals(r.getId()))
-                .findFirst()
-                .orElseThrow(() -> new RuntimeException(("Error retrieving created review")));
+        return getReviewFromRestaurant(savedRestaurant, reviewId)
+                .orElseThrow(() -> new RuntimeException("Error retrieving created review"));
 
     }
 
@@ -113,10 +112,39 @@ public class ReviewServiceImpl implements ReviewService {
     public Optional<Review> getReviewById(String restaurantId, String reviewId) {
         Restaurant restaurant = getRestaurantOrThrow(restaurantId);
 
-        return restaurant.getReviews()
-                .stream()
-                .filter(r -> reviewId.equals(r.getId()))
-                .findFirst();
+        return getReviewFromRestaurant(restaurant, reviewId);
+    }
+
+    @Override
+    public Review updateReview(
+            User author,
+            String restaurantId,
+            String reviewId,
+            ReviewCreateUpdateRequest review) {
+
+        Restaurant restaurant = getRestaurantOrThrow(restaurantId);
+        Review existingReview = getAuthorReviewOrThrow(restaurant, reviewId, author);
+
+        if (LocalDateTime.now().isAfter(existingReview.getDatePosted().plusHours(48))) {
+            throw new ReviewNotAllowedException("Review can no longer be edited");
+        }
+
+        existingReview.setContent(review.getContent());
+        existingReview.setRating(review.getRating());
+        existingReview.setLastEdited(LocalDateTime.now());
+
+        existingReview.setPhotos(review.getPhotoIds().stream()
+                .map(photoId -> Photo.builder()
+                        .url(photoId)
+                        .uploadDate(LocalDateTime.now())
+                        .build()).toList());
+
+        // existingReview is the same object stored in the restaurant, so the edits above are already in place
+        updateRestaurantAverageRating(restaurant);
+
+        restaurantRepository.save(restaurant);
+
+        return existingReview;
     }
 
     // Recalculates the average from all reviews; 0 when there are none
@@ -129,6 +157,26 @@ public class ReviewServiceImpl implements ReviewService {
                 .orElse(0.0);
 
         restaurant.setAverageRating((float) averageRating);
+    }
+
+    // Reviews live inside the restaurant document, so look them up in its list
+    private Optional<Review> getReviewFromRestaurant(Restaurant restaurant, String reviewId) {
+        return restaurant.getReviews()
+                .stream()
+                .filter(r -> reviewId.equals(r.getId()))
+                .findFirst();
+    }
+
+    // Update and delete both need an existing review that belongs to the caller
+    private Review getAuthorReviewOrThrow(Restaurant restaurant, String reviewId, User author) {
+        Review review = getReviewFromRestaurant(restaurant, reviewId)
+                .orElseThrow(() -> new ReviewNotFoundException("Review not found with id " + reviewId));
+
+        if (!author.getId().equals(review.getWrittenBy().getId())) {
+            throw new ReviewNotAllowedException("Cannot change another user's review");
+        }
+
+        return review;
     }
 
     // Shared by all review operations that need an existing restaurant
