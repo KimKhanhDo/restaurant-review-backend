@@ -64,10 +64,8 @@ public class ReviewServiceImpl implements ReviewService {
 
         Restaurant savedRestaurant = restaurantRepository.save(restaurant);
 
-        return savedRestaurant.getReviews().stream()
-                .filter(r -> reviewId.equals(r.getId()))
-                .findFirst()
-                .orElseThrow(() -> new RuntimeException(("Error retrieving created review")));
+        return getReviewFromRestaurant(savedRestaurant, reviewId)
+                .orElseThrow(() -> new RuntimeException("Error retrieving created review"));
 
     }
 
