@@ -7,6 +7,7 @@ import com.dev.restaurant_backend.domain.entities.Review;
 import com.dev.restaurant_backend.domain.entities.User;
 import com.dev.restaurant_backend.exceptions.RestaurantNotFoundException;
 import com.dev.restaurant_backend.exceptions.ReviewNotAllowedException;
+import com.dev.restaurant_backend.exceptions.ReviewNotFoundException;
 import com.dev.restaurant_backend.repositories.RestaurantRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -54,6 +55,13 @@ class ReviewServiceImplTest {
             .username("an")
             .givenName("An")
             .familyName("Nguyen")
+            .build();
+
+    private final User binh = User.builder()
+            .id("user-binh")
+            .username("binh")
+            .givenName("Binh")
+            .familyName("Tran")
             .build();
 
     @Test
@@ -186,6 +194,89 @@ class ReviewServiceImplTest {
         assertThat(found).isEmpty();
     }
 
+    @Test
+    void updateReview_whenValid_updatesAndReturnsReview() {
+        LocalDateTime postedAt = LocalDateTime.now().minusHours(1);
+        Restaurant restaurant = restaurantWithReviews(reviewPostedAt(kim, 3, postedAt));
+        when(restaurantRepository.findById(RESTAURANT_ID)).thenReturn(Optional.of(restaurant));
+
+        ReviewCreateUpdateRequest request = request("Better than I remembered", 5, List.of("pho-v2.jpg"));
+
+        Review updated = reviewService.updateReview(kim, RESTAURANT_ID, "review-user-kim", request);
+
+        assertThat(updated.getContent()).isEqualTo("Better than I remembered");
+        assertThat(updated.getRating()).isEqualTo(5);
+        assertThat(updated.getPhotos()).extracting(Photo::getUrl).containsExactly("pho-v2.jpg");
+        // datePosted must not move, otherwise editing could extend the 48-hour window
+        assertThat(updated.getDatePosted()).isEqualTo(postedAt);
+        assertThat(updated.getLastEdited()).isAfter(postedAt);
+        verify(restaurantRepository).save(restaurant);
+    }
+
+    @Test
+    void updateReview_whenValid_recalculatesAverageRating() {
+        Restaurant restaurant = restaurantWithReviews(
+                reviewPostedAt(an, 4, LocalDateTime.now().minusDays(5)),
+                reviewPostedAt(kim, 3, LocalDateTime.now().minusHours(1)));
+        when(restaurantRepository.findById(RESTAURANT_ID)).thenReturn(Optional.of(restaurant));
+
+        reviewService.updateReview(kim, RESTAURANT_ID, "review-user-kim", request("Better than I remembered", 5, List.of()));
+
+        // (4 + 5) / 2
+        assertThat(restaurant.getAverageRating()).isEqualTo(4.5f);
+    }
+
+    @Test
+    void updateReview_whenValid_keepsReviewPosition() {
+        Restaurant restaurant = restaurantWithReviews(
+                reviewPostedAt(an, 4, LocalDateTime.now().minusDays(5)),
+                reviewPostedAt(kim, 3, LocalDateTime.now().minusHours(1)),
+                reviewPostedAt(binh, 5, LocalDateTime.now().minusDays(2)));
+        when(restaurantRepository.findById(RESTAURANT_ID)).thenReturn(Optional.of(restaurant));
+
+        reviewService.updateReview(kim, RESTAURANT_ID, "review-user-kim", request("Better than I remembered", 5, List.of()));
+
+        assertThat(restaurant.getReviews()).extracting(Review::getId)
+                .containsExactly("review-user-an", "review-user-kim", "review-user-binh");
+    }
+
+    @Test
+    void updateReview_whenReviewMissing_throwsReviewNotFoundException() {
+        Restaurant restaurant = restaurantWithReviews(reviewPostedAt(kim, 3, LocalDateTime.now().minusHours(1)));
+        when(restaurantRepository.findById(RESTAURANT_ID)).thenReturn(Optional.of(restaurant));
+
+        ReviewCreateUpdateRequest request = request("Better than I remembered", 5, List.of());
+
+        assertThatThrownBy(() -> reviewService.updateReview(kim, RESTAURANT_ID, "review-unknown", request))
+                .isInstanceOf(ReviewNotFoundException.class);
+        verify(restaurantRepository, never()).save(any());
+    }
+
+    @Test
+    void updateReview_whenNotAuthor_throwsReviewNotAllowedException() {
+        Restaurant restaurant = restaurantWithReviews(reviewPostedAt(kim, 3, LocalDateTime.now().minusHours(1)));
+        when(restaurantRepository.findById(RESTAURANT_ID)).thenReturn(Optional.of(restaurant));
+
+        ReviewCreateUpdateRequest request = request("Not my review", 1, List.of());
+
+        // An tries to edit Kim's review
+        assertThatThrownBy(() -> reviewService.updateReview(an, RESTAURANT_ID, "review-user-kim", request))
+                .isInstanceOf(ReviewNotAllowedException.class);
+        verify(restaurantRepository, never()).save(any());
+    }
+
+    @Test
+    void updateReview_whenOlderThan48Hours_throwsReviewNotAllowedException() {
+        Restaurant restaurant = restaurantWithReviews(reviewPostedAt(kim, 3, LocalDateTime.now().minusHours(49)));
+        when(restaurantRepository.findById(RESTAURANT_ID)).thenReturn(Optional.of(restaurant));
+
+        ReviewCreateUpdateRequest request = request("Too late to change", 5, List.of());
+
+        assertThatThrownBy(() -> reviewService.updateReview(kim, RESTAURANT_ID, "review-user-kim", request))
+                .isInstanceOf(ReviewNotAllowedException.class);
+        verify(restaurantRepository, never()).save(any());
+    }
+
     // Behaves like Elasticsearch: returns the restaurant exactly as it was saved
     private void stubSaveToReturnInput() {
         when(restaurantRepository.save(any(Restaurant.class)))
@@ -237,6 +328,18 @@ class ReviewServiceImplTest {
                 .datePosted(datePosted)
                 .lastEdited(datePosted)
                 .writtenBy(an)
+                .build();
+    }
+
+    // Id follows the author ("review-user-kim") so tests can refer to a review by who wrote it
+    private Review reviewPostedAt(User author, int rating, LocalDateTime datePosted) {
+        return Review.builder()
+                .id("review-" + author.getId())
+                .content("Review by " + author.getUsername())
+                .rating(rating)
+                .datePosted(datePosted)
+                .lastEdited(datePosted)
+                .writtenBy(author)
                 .build();
     }
 }
