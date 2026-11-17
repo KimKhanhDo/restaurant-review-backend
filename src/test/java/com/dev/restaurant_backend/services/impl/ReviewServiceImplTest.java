@@ -14,7 +14,12 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -110,6 +115,77 @@ class ReviewServiceImplTest {
         verify(restaurantRepository, never()).save(any());
     }
 
+    @Test
+    void listReviews_whenNoSort_returnsNewestFirst() {
+        when(restaurantRepository.findById(RESTAURANT_ID)).thenReturn(Optional.of(restaurantWithFiveReviews()));
+
+        Page<Review> page = reviewService.listReviews(RESTAURANT_ID, PageRequest.of(0, 20));
+
+        assertThat(page.getContent()).extracting(Review::getId)
+                .containsExactly("review-e", "review-d", "review-c", "review-b", "review-a");
+    }
+
+    @Test
+    void listReviews_whenSortedByRatingDesc_returnsHighestRatedFirst() {
+        when(restaurantRepository.findById(RESTAURANT_ID)).thenReturn(Optional.of(restaurantWithFiveReviews()));
+
+        Pageable pageable = PageRequest.of(0, 20, Sort.by(Sort.Direction.DESC, "rating"));
+        Page<Review> page = reviewService.listReviews(RESTAURANT_ID, pageable);
+
+        assertThat(page.getContent()).extracting(Review::getId)
+                .containsExactly("review-a", "review-c", "review-b", "review-d", "review-e");
+    }
+
+    @Test
+    void listReviews_whenUnknownSortField_sortsByDatePosted() {
+        when(restaurantRepository.findById(RESTAURANT_ID)).thenReturn(Optional.of(restaurantWithFiveReviews()));
+
+        Pageable pageable = PageRequest.of(0, 20, Sort.by(Sort.Direction.ASC, "content"));
+        Page<Review> page = reviewService.listReviews(RESTAURANT_ID, pageable);
+
+        assertThat(page.getContent()).extracting(Review::getId)
+                .containsExactly("review-a", "review-b", "review-c", "review-d", "review-e");
+    }
+
+    @Test
+    void listReviews_whenLastPage_returnsRemainingReviews() {
+        when(restaurantRepository.findById(RESTAURANT_ID)).thenReturn(Optional.of(restaurantWithFiveReviews()));
+
+        // Newest first: [E, D] [C, B] [A], so page 2 only holds A
+        Page<Review> page = reviewService.listReviews(RESTAURANT_ID, PageRequest.of(2, 2));
+
+        assertThat(page.getContent()).extracting(Review::getId).containsExactly("review-a");
+        assertThat(page.getTotalElements()).isEqualTo(5);
+    }
+
+    @Test
+    void listReviews_whenPageBeyondReviews_returnsEmptyPage() {
+        when(restaurantRepository.findById(RESTAURANT_ID)).thenReturn(Optional.of(restaurantWithFiveReviews()));
+
+        Page<Review> page = reviewService.listReviews(RESTAURANT_ID, PageRequest.of(10, 2));
+
+        assertThat(page.getContent()).isEmpty();
+        assertThat(page.getTotalElements()).isEqualTo(5);
+    }
+
+    @Test
+    void getReviewById_whenReviewExists_returnsReview() {
+        when(restaurantRepository.findById(RESTAURANT_ID)).thenReturn(Optional.of(restaurantWithFiveReviews()));
+
+        Optional<Review> found = reviewService.getReviewById(RESTAURANT_ID, "review-c");
+
+        assertThat(found).map(Review::getId).contains("review-c");
+    }
+
+    @Test
+    void getReviewById_whenReviewMissing_returnsEmpty() {
+        when(restaurantRepository.findById(RESTAURANT_ID)).thenReturn(Optional.of(restaurantWithFiveReviews()));
+
+        Optional<Review> found = reviewService.getReviewById(RESTAURANT_ID, "review-unknown");
+
+        assertThat(found).isEmpty();
+    }
+
     // Behaves like Elasticsearch: returns the restaurant exactly as it was saved
     private void stubSaveToReturnInput() {
         when(restaurantRepository.save(any(Restaurant.class)))
@@ -139,6 +215,28 @@ class ReviewServiceImplTest {
                 .content(content)
                 .rating(rating)
                 .photoIds(photoIds)
+                .build();
+    }
+
+    // Stored out of order on purpose, so the tests prove the service really sorts
+    private Restaurant restaurantWithFiveReviews() {
+        return restaurantWithReviews(
+                review("review-c", 4, LocalDateTime.of(2026, 11, 10, 12, 0)),
+                review("review-a", 5, LocalDateTime.of(2026, 11, 1, 12, 0)),
+                review("review-e", 1, LocalDateTime.of(2026, 11, 15, 12, 0)),
+                review("review-b", 3, LocalDateTime.of(2026, 11, 5, 12, 0)),
+                review("review-d", 2, LocalDateTime.of(2026, 11, 12, 12, 0))
+        );
+    }
+
+    private Review review(String id, int rating, LocalDateTime datePosted) {
+        return Review.builder()
+                .id(id)
+                .content("Review " + id)
+                .rating(rating)
+                .datePosted(datePosted)
+                .lastEdited(datePosted)
+                .writtenBy(an)
                 .build();
     }
 }
