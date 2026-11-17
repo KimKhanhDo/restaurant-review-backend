@@ -10,9 +10,15 @@ import com.dev.restaurant_backend.exceptions.ReviewNotAllowedException;
 import com.dev.restaurant_backend.repositories.RestaurantRepository;
 import com.dev.restaurant_backend.services.ReviewService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
@@ -65,6 +71,45 @@ public class ReviewServiceImpl implements ReviewService {
                 .findFirst()
                 .orElseThrow(() -> new RuntimeException(("Error retrieving created review")));
 
+    }
+
+    // Reviews are nested inside the restaurant document, so sorting and paging happen in memory
+    @Override
+    public Page<Review> listReviews(String restaurantId, Pageable pageable) {
+        Restaurant restaurant = getRestaurantOrThrow(restaurantId);
+        List<Review> reviews = restaurant.getReviews();
+
+        Sort sort = pageable.getSort();
+
+        if (sort.isSorted()) {
+            // Only the first sort rule is supported to keep it simple
+            Sort.Order order = sort.iterator().next();
+            String property = order.getProperty();
+            boolean isAscending = order.getDirection().isAscending();
+
+            Comparator<Review> comparator = switch (property) {
+                case "rating" -> Comparator.comparingInt(Review::getRating);
+                // datePosted and unknown fields both sort by date, so a bad sort param never fails
+                default -> Comparator.comparing(Review::getDatePosted);
+            };
+
+            reviews.sort(isAscending ? comparator : comparator.reversed());
+        } else {
+            // Newest first when the client asks for no order
+            reviews.sort(Comparator.comparing(Review::getDatePosted).reversed());
+        }
+
+        int start = (int) pageable.getOffset();
+
+        // Page is past the last review: return an empty page instead of letting subList throw
+        if (start >= reviews.size()) {
+            return new PageImpl<>(Collections.emptyList(), pageable, reviews.size());
+        }
+
+        // The last page may hold fewer reviews than the page size
+        int end = Math.min(start + pageable.getPageSize(), reviews.size());
+
+        return new PageImpl<>(reviews.subList(start, end), pageable, reviews.size());
     }
 
     // Recalculates the average from all reviews; 0 when there are none
