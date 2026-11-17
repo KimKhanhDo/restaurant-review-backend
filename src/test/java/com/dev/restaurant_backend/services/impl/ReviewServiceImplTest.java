@@ -277,6 +277,80 @@ class ReviewServiceImplTest {
         verify(restaurantRepository, never()).save(any());
     }
 
+    @Test
+    void deleteReview_whenAuthor_removesReview() {
+        Restaurant restaurant = restaurantWithReviews(
+                reviewPostedAt(an, 4, LocalDateTime.now().minusDays(5)),
+                reviewPostedAt(kim, 3, LocalDateTime.now().minusHours(1)),
+                reviewPostedAt(binh, 5, LocalDateTime.now().minusDays(2)));
+        when(restaurantRepository.findById(RESTAURANT_ID)).thenReturn(Optional.of(restaurant));
+
+        reviewService.deleteReview(kim, RESTAURANT_ID, "review-user-kim");
+
+        assertThat(restaurant.getReviews()).extracting(Review::getId)
+                .containsExactly("review-user-an", "review-user-binh");
+        verify(restaurantRepository).save(restaurant);
+    }
+
+    @Test
+    void deleteReview_whenAuthor_recalculatesAverageRating() {
+        Restaurant restaurant = restaurantWithReviews(
+                reviewPostedAt(an, 4, LocalDateTime.now().minusDays(5)),
+                reviewPostedAt(kim, 3, LocalDateTime.now().minusHours(1)),
+                reviewPostedAt(binh, 5, LocalDateTime.now().minusDays(2)));
+        when(restaurantRepository.findById(RESTAURANT_ID)).thenReturn(Optional.of(restaurant));
+
+        reviewService.deleteReview(kim, RESTAURANT_ID, "review-user-kim");
+
+        // (4 + 5) / 2
+        assertThat(restaurant.getAverageRating()).isEqualTo(4.5f);
+    }
+
+    @Test
+    void deleteReview_whenLastReview_resetsAverageRatingToZero() {
+        Restaurant restaurant = restaurantWithReviews(reviewPostedAt(kim, 3, LocalDateTime.now().minusHours(1)));
+        when(restaurantRepository.findById(RESTAURANT_ID)).thenReturn(Optional.of(restaurant));
+
+        reviewService.deleteReview(kim, RESTAURANT_ID, "review-user-kim");
+
+        assertThat(restaurant.getReviews()).isEmpty();
+        assertThat(restaurant.getAverageRating()).isEqualTo(0.0f);
+    }
+
+    @Test
+    void deleteReview_whenOlderThan48Hours_stillDeletes() {
+        // Unlike editing, deleting your own review has no time limit
+        Restaurant restaurant = restaurantWithReviews(reviewPostedAt(kim, 3, LocalDateTime.now().minusDays(30)));
+        when(restaurantRepository.findById(RESTAURANT_ID)).thenReturn(Optional.of(restaurant));
+
+        reviewService.deleteReview(kim, RESTAURANT_ID, "review-user-kim");
+
+        assertThat(restaurant.getReviews()).isEmpty();
+        verify(restaurantRepository).save(restaurant);
+    }
+
+    @Test
+    void deleteReview_whenReviewMissing_throwsReviewNotFoundException() {
+        Restaurant restaurant = restaurantWithReviews(reviewPostedAt(kim, 3, LocalDateTime.now().minusHours(1)));
+        when(restaurantRepository.findById(RESTAURANT_ID)).thenReturn(Optional.of(restaurant));
+
+        assertThatThrownBy(() -> reviewService.deleteReview(kim, RESTAURANT_ID, "review-unknown"))
+                .isInstanceOf(ReviewNotFoundException.class);
+        verify(restaurantRepository, never()).save(any());
+    }
+
+    @Test
+    void deleteReview_whenNotAuthor_throwsReviewNotAllowedException() {
+        Restaurant restaurant = restaurantWithReviews(reviewPostedAt(kim, 3, LocalDateTime.now().minusHours(1)));
+        when(restaurantRepository.findById(RESTAURANT_ID)).thenReturn(Optional.of(restaurant));
+
+        // An tries to delete Kim's review
+        assertThatThrownBy(() -> reviewService.deleteReview(an, RESTAURANT_ID, "review-user-kim"))
+                .isInstanceOf(ReviewNotAllowedException.class);
+        assertThat(restaurant.getReviews()).hasSize(1);
+        verify(restaurantRepository, never()).save(any());
+    }
+
     // Behaves like Elasticsearch: returns the restaurant exactly as it was saved
     private void stubSaveToReturnInput() {
         when(restaurantRepository.save(any(Restaurant.class)))

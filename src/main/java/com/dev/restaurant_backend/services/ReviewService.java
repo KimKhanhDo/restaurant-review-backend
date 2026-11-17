@@ -21,4 +21,6 @@ public interface ReviewService {
             String reviewId,
             ReviewCreateUpdateRequest review);
 
+    void deleteReview(User author, String restaurantId, String reviewId);
+
 }
