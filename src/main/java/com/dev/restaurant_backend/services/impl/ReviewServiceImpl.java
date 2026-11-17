@@ -7,6 +7,7 @@ import com.dev.restaurant_backend.domain.entities.Review;
 import com.dev.restaurant_backend.domain.entities.User;
 import com.dev.restaurant_backend.exceptions.RestaurantNotFoundException;
 import com.dev.restaurant_backend.exceptions.ReviewNotAllowedException;
+import com.dev.restaurant_backend.exceptions.ReviewNotFoundException;
 import com.dev.restaurant_backend.repositories.RestaurantRepository;
 import com.dev.restaurant_backend.services.ReviewService;
 import lombok.RequiredArgsConstructor;
@@ -18,7 +19,6 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -125,14 +125,7 @@ public class ReviewServiceImpl implements ReviewService {
             ReviewCreateUpdateRequest review) {
 
         Restaurant restaurant = getRestaurantOrThrow(restaurantId);
-        String authorId = author.getId();
-
-        Review existingReview = getReviewFromRestaurant(restaurant, reviewId)
-                .orElseThrow(() -> new ReviewNotAllowedException("Review does not exist"));
-
-        if (!authorId.equals(existingReview.getWrittenBy().getId())) {
-            throw new ReviewNotAllowedException("Cannot update another user's review");
-        }
+        Review existingReview = getAuthorReviewOrThrow(restaurant, reviewId, author);
 
         if (LocalDateTime.now().isAfter(existingReview.getDatePosted().plusHours(48))) {
             throw new ReviewNotAllowedException("Review can no longer be edited");
@@ -148,14 +141,7 @@ public class ReviewServiceImpl implements ReviewService {
                         .uploadDate(LocalDateTime.now())
                         .build()).toList());
 
-        // Collectors.toList() gives a mutable list, so the edited review can be added back
-        List<Review> updatedReviews = restaurant.getReviews().stream()
-                .filter(r -> !reviewId.equals(r.getId()))
-                .collect(Collectors.toList());
-        updatedReviews.add(existingReview);
-
-        restaurant.setReviews(updatedReviews);
-
+        // existingReview is the same object stored in the restaurant, so the edits above are already in place
         updateRestaurantAverageRating(restaurant);
 
         restaurantRepository.save(restaurant);
@@ -181,6 +167,18 @@ public class ReviewServiceImpl implements ReviewService {
                 .stream()
                 .filter(r -> reviewId.equals(r.getId()))
                 .findFirst();
+    }
+
+    // Update and delete both need an existing review that belongs to the caller
+    private Review getAuthorReviewOrThrow(Restaurant restaurant, String reviewId, User author) {
+        Review review = getReviewFromRestaurant(restaurant, reviewId)
+                .orElseThrow(() -> new ReviewNotFoundException("Review not found with id " + reviewId));
+
+        if (!author.getId().equals(review.getWrittenBy().getId())) {
+            throw new ReviewNotAllowedException("Cannot change another user's review");
+        }
+
+        return review;
     }
 
     // Shared by all review operations that need an existing restaurant
